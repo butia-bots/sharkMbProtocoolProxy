@@ -101,7 +101,7 @@ void Send(int16_t uSteer, int16_t uSpeed)
 void SendPc()
 {
   // Write to Serial
-  HoverSerial.write((uint8_t *) &Feedback, sizeof(Feedback)); 
+  Serial.write((uint8_t *) &Feedback, sizeof(Feedback)); 
 }
 
 
