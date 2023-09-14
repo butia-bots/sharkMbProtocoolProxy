@@ -45,12 +45,14 @@ uint16_t bufStartFrame;                 // Buffer Start Frame
 byte *p;                                // Pointer declaration for the new received data
 byte incomingByte;
 byte incomingBytePrev;
+bool hoverNewMessage = false;
 
 uint8_t idxpc = 0;                        // Index for new data pointer
 uint16_t bufStartFramepc;                 // Buffer Start Frame
 byte *p_pc;                                // Pointer declaration for the new received data
 byte incomingBytepc;
 byte incomingBytePrevpc;
+bool pcNewMessage = false;
 
 
 typedef struct{
@@ -89,23 +91,32 @@ void setup()
 }
 
 // ########################## SEND ##########################
-void Send(int16_t uSteer, int16_t uSpeed)
+// void Send(int16_t uSteer, int16_t uSpeed)
+void Send()
 {
   // Create command
-  Command.start    = (uint16_t)START_FRAME;
-  Command.steer    = (int16_t)uSteer;
-  Command.speed    = (int16_t)uSpeed;
-  Command.checksum = (uint16_t)(Command.start ^ Command.steer ^ Command.speed);
+  if(pcNewMessage)
+  {
+  //   Command.start    = (uint16_t)START_FRAME;
+  //   Command.steer    = (int16_t)uSteer;
+  //   Command.speed    = (int16_t)uSpeed;
+  //   Command.checksum = (uint16_t)(Command.start ^ Command.steer ^ Command.speed);
 
-  // Write to Serial
-  Serial2.write((uint8_t *) &Command, sizeof(Command)); 
+    // Write to Serial
+    Serial2.write((uint8_t *) &NewCommand, sizeof(Command));
+    pcNewMessage = false;
+  }
 }
 
 
 void SendPc()
 {
   // Write to Serial
-  Serial.write((uint8_t *) &Feedback, sizeof(Feedback)); 
+  if(hoverNewMessage)
+  {
+    Serial.write((uint8_t *) &Feedback, sizeof(Feedback)); 
+    hoverNewMessage = false;
+  }
 }
 
 
@@ -141,6 +152,7 @@ void ReceivePc()
             // Copy the new data
             memcpy(&Command, &NewCommand, sizeof(SerialCommand));
 
+
             // //Print data to built-in Serial
             // Serial.print("1: ");   Serial.print(Feedback.cmd1);
             // Serial.print(" 2: ");  Serial.print(Feedback.cmd2);
@@ -152,6 +164,7 @@ void ReceivePc()
         } else {
           // Serial.println("Non-valid data skipped");
         }
+        pcNewMessage = true;
         idxpc = 0;    // Reset the index (it prevents to enter in this if condition in the next cycle)
     }
 
@@ -174,10 +187,10 @@ void Receive()
     }
 
   // If DEBUG_RX is defined print all incoming bytes
-  #ifdef DEBUG_RX
-        Serial.print(incomingByte);
-        return;
-  #endif
+  // #ifdef DEBUG_RX
+  //       Serial.print(incomingByte);
+  //       return;
+  // #endif
 
     // Copy received data
     if (bufStartFrame == START_FRAME) {	 
@@ -200,6 +213,7 @@ void Receive()
         if (NewFeedback.start == START_FRAME && NewFeedback.checksum == checksum) {
             // Copy the new data
             memcpy(&Feedback, &NewFeedback, sizeof(SerialFeedback));
+            hoverNewMessage = true;
 
             // Print data to built-in Serial
             // Serial.print("1: ");   Serial.print(Feedback.cmd1);
@@ -212,8 +226,6 @@ void Receive()
             // Serial.print(" 6: ");  Serial.print(Feedback.boardTemp);
             // Serial.print(" 7: ");  Serial.println(Feedback.cmdLed);
 
-        } else {
-          Serial.println("Non-valid data skipped");
         }
         idx = 0;    // Reset the index (it prevents to enter in this if condition in the next cycle)
     }
@@ -231,7 +243,7 @@ void loop(void)
  
   //PublisheData
   ReceivePc();
-  Send(Command.steer, Command.speed);
+  Send();
   Receive();
   SendPc();
 //
