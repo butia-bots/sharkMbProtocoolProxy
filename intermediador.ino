@@ -25,16 +25,19 @@
 // *******************************************************************
 
 // ########################## DEFINES ##########################
-#define HOVER_SERIAL_BAUD   115200      // [-] Baud rate for HoverSerial (used to communicate with the hoverboard)
+#define HOVER_SERIAL_BAUD   115200      // [-] Baud rate for Serial2 (used to communicate with the hoverboard)
 #define SERIAL_BAUD         115200      // [-] Baud rate for built-in Serial (used for the Serial Monitor)
 #define START_FRAME         0xABCD     	// [-] Start frme definition for reliable serial communication
 #define TIME_SEND           100         // [ms] Sending time interval
-#define SPEED_MAX_TEST      300         // [-] Maximum speed for testing
-#define SPEED_STEP          20          // [-] Speed step
-// #define DEBUG_RX                        // [-] Debug received data. Prints all bytes to serial (comment-out to disable)
+#define SPEED_MAX_TEST      100         // [-] Maximum speed for testing
+#define SPEED_STEP          0          // [-] Speed step
+//#define DEBUG_RX                        // [-] Debug received data. Prints all bytes to serial (comment-out to disable)
+#include <Arduino.h>
 
-#include <SoftwareSerial.h>
-SoftwareSerial HoverSerial(2,3);        // RX, TX
+#define RXD2 16
+#define TXD2 17
+
+
 
 // Global variables
 uint8_t idx = 0;                        // Index for new data pointer
@@ -66,6 +69,8 @@ typedef struct{
    int16_t  cmd2;
    int16_t  speedR_meas;
    int16_t  speedL_meas;
+   int16_t  wheelR_cnt;
+   int16_t  wheelL_cnt;
    int16_t  batVoltage;
    int16_t  boardTemp;
    uint16_t cmdLed;
@@ -78,10 +83,9 @@ SerialFeedback NewFeedback;
 void setup() 
 {
   Serial.begin(SERIAL_BAUD);
-  Serial.println("Hoverboard Serial v1.0");
+  //Serial.println("Hoverboard Serial v1.0");
 
-  HoverSerial.begin(HOVER_SERIAL_BAUD);
-  pinMode(LED_BUILTIN, OUTPUT);
+  Serial2.begin(HOVER_SERIAL_BAUD, SERIAL_8N1, RXD2, TXD2);
 }
 
 // ########################## SEND ##########################
@@ -94,7 +98,7 @@ void Send(int16_t uSteer, int16_t uSpeed)
   Command.checksum = (uint16_t)(Command.start ^ Command.steer ^ Command.speed);
 
   // Write to Serial
-  HoverSerial.write((uint8_t *) &Command, sizeof(Command)); 
+  Serial2.write((uint8_t *) &Command, sizeof(Command)); 
 }
 
 
@@ -137,7 +141,7 @@ void ReceivePc()
             // Copy the new data
             memcpy(&Command, &NewCommand, sizeof(SerialCommand));
 
-            // Print data to built-in Serial
+            // //Print data to built-in Serial
             // Serial.print("1: ");   Serial.print(Feedback.cmd1);
             // Serial.print(" 2: ");  Serial.print(Feedback.cmd2);
             // Serial.print(" 3: ");  Serial.print(Feedback.speedR_meas);
@@ -160,9 +164,10 @@ void ReceivePc()
 void Receive()
 {
     // Check for new data availability in the Serial buffer
-    if (HoverSerial.available()) {
-        incomingByte 	  = HoverSerial.read();                                   // Read the incoming byte
-        bufStartFrame	= ((uint16_t)(incomingByte) << 8) | incomingBytePrev;       // Construct the start frame
+    if (Serial2.available()) {
+        incomingByte 	  = Serial2.read();                                   // Read the incoming byte
+        bufStartFrame	= ((uint16_t)(incomingByte) << 8) | incomingBytePrev;
+    
     }
     else {
         return;
@@ -172,10 +177,10 @@ void Receive()
   #ifdef DEBUG_RX
         Serial.print(incomingByte);
         return;
-    #endif
+  #endif
 
     // Copy received data
-    if (bufStartFrame == START_FRAME) {	                    // Initialize if new data is detected
+    if (bufStartFrame == START_FRAME) {	 
         p       = (byte *)&NewFeedback;
         *p++    = incomingBytePrev;
         *p++    = incomingByte;
@@ -188,11 +193,11 @@ void Receive()
     // Check if we reached the end of the package
     if (idx == sizeof(SerialFeedback)) {
         uint16_t checksum;
-        checksum = (uint16_t)(NewFeedback.start ^ NewFeedback.cmd1 ^ NewFeedback.cmd2 ^ NewFeedback.speedR_meas ^ NewFeedback.speedL_meas
-                            ^ NewFeedback.batVoltage ^ NewFeedback.boardTemp ^ NewFeedback.cmdLed);
+        checksum = (uint16_t)(NewFeedback.start ^ NewFeedback.cmd1 ^ NewFeedback.cmd2 ^ NewFeedback.speedR_meas ^ NewFeedback.speedL_meas 
+                              ^ NewFeedback.wheelR_cnt ^ NewFeedback.wheelL_cnt ^ NewFeedback.batVoltage ^ NewFeedback.boardTemp ^ NewFeedback.cmdLed);
 
         // Check validity of the new data
-        if (NewFeedback.start == START_FRAME && checksum == NewFeedback.checksum) {
+        if (NewFeedback.start == START_FRAME && NewFeedback.checksum == checksum) {
             // Copy the new data
             memcpy(&Feedback, &NewFeedback, sizeof(SerialFeedback));
 
@@ -201,11 +206,14 @@ void Receive()
             // Serial.print(" 2: ");  Serial.print(Feedback.cmd2);
             // Serial.print(" 3: ");  Serial.print(Feedback.speedR_meas);
             // Serial.print(" 4: ");  Serial.print(Feedback.speedL_meas);
+            // Serial.print(" r: ");  Serial.print(Feedback.wheelR_cnt);
+            // Serial.print(" l: ");  Serial.print(Feedback.wheelL_cnt);
             // Serial.print(" 5: ");  Serial.print(Feedback.batVoltage);
             // Serial.print(" 6: ");  Serial.print(Feedback.boardTemp);
             // Serial.print(" 7: ");  Serial.println(Feedback.cmdLed);
+
         } else {
-          // Serial.println("Non-valid data skipped");
+          Serial.println("Non-valid data skipped");
         }
         idx = 0;    // Reset the index (it prevents to enter in this if condition in the next cycle)
     }
@@ -219,12 +227,18 @@ void Receive()
 void loop(void)
 { 
 
-  // Check for new received data
+  // // Check for new received data
+ 
+  //PublisheData
   ReceivePc();
   Send(Command.steer, Command.speed);
   Receive();
   SendPc();
-  //PublisheData
+//
+  //Receive();
+  
+
+//
 
 }
 
